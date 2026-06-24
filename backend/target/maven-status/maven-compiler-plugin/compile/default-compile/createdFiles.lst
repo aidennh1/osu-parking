@@ -1,0 +1,9 @@
+com\osuparkng\config\AppConfig$1.class
+com\osuparkng\controller\ParkingController.class
+com\osuparkng\repository\GarageRepository.class
+com\osuparkng\service\ParkingService.class
+com\osuparkng\model\Garage.class
+com\osuparkng\repository\GarageReadingRepository.class
+com\osuparkng\model\GarageReading.class
+com\osuparkng\config\AppConfig.class
+com\osuparkng\OsuParkingApplication.class
