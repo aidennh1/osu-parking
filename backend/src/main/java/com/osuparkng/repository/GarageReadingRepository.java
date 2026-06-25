@@ -20,7 +20,6 @@ public interface GarageReadingRepository extends JpaRepository<GarageReading, Lo
     """)
     List<GarageReading> findLatestPerGarage();
 
-    /** Time-series history for one garage — native SQL so we can use SQLite's datetime() */
     @Query(value = """
         SELECT * FROM readings
         WHERE garage_id = :garageId
