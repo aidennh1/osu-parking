@@ -1,3 +1,7 @@
+import { useState, useEffect } from 'react'
+
+const API_URL = import.meta.env.VITE_API_URL
+
 export function useGarageHistory(garageId, hours = 24) {
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(false)
