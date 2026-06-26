@@ -21,13 +21,13 @@ public interface GarageReadingRepository extends JpaRepository<GarageReading, Lo
     List<GarageReading> findLatestPerGarage();
 
     @Query(value = """
-        SELECT * FROM readings
-        WHERE garage_id = :garageId
-          AND scraped_at >= datetime('now', :offset)
-        ORDER BY scraped_at ASC
-    """, nativeQuery = true)
-    List<GarageReading> findHistory(
-        @Param("garageId") String garageId,
-        @Param("offset") String offset
-    );
+    SELECT * FROM readings
+    WHERE garage_id = :garageId
+      AND scraped_at >= (NOW() + CAST(:offset AS interval))::text
+    ORDER BY scraped_at ASC
+""", nativeQuery = true)
+List<GarageReading> findHistory(
+    @Param("garageId") String garageId,
+    @Param("offset") String offset
+);
 }

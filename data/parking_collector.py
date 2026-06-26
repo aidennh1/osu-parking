@@ -1,39 +1,41 @@
+import os
 import requests
-import sqlite3
+import psycopg2
 import time
 from datetime import datetime, timezone
 
-DB_PATH = "parking.db"
+DATABASE_URL = os.environ["DATABASE_URL"]  # Railway injects this automatically
 API_URL = "https://content.osu.edu/v2/parking/garages/availability"
 
 
 def init_db(conn):
-    conn.executescript("""
-        CREATE TABLE IF NOT EXISTS garages (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            capacity INTEGER,
-            link TEXT,
-            building_number TEXT
-        );
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS garages (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                capacity INTEGER,
+                link TEXT,
+                building_number TEXT
+            );
 
-        CREATE TABLE IF NOT EXISTS readings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            garage_id TEXT REFERENCES garages(id),
-            occupied INTEGER,
-            available INTEGER,
-            occupancy_pct INTEGER,
-            closed INTEGER,
-            access_types TEXT,
-            scraped_at TEXT,
-            source_updated_at TEXT,
-            day_of_week INTEGER,
-            hour INTEGER
-        );
+            CREATE TABLE IF NOT EXISTS readings (
+                id SERIAL PRIMARY KEY,
+                garage_id TEXT REFERENCES garages(id),
+                occupied INTEGER,
+                available INTEGER,
+                occupancy_pct INTEGER,
+                closed INTEGER,
+                access_types TEXT,
+                scraped_at TEXT,
+                source_updated_at TEXT,
+                day_of_week INTEGER,
+                hour INTEGER
+            );
 
-        CREATE INDEX IF NOT EXISTS idx_readings_garage_time
-            ON readings(garage_id, scraped_at);
-    """)
+            CREATE INDEX IF NOT EXISTS idx_readings_garage_time
+                ON readings(garage_id, scraped_at);
+        """)
     conn.commit()
 
 
@@ -50,47 +52,45 @@ def fetch_and_store(conn):
     garages = data["data"]["garages"]
     now = datetime.now(timezone.utc)
     scraped_at = now.isoformat()
-    dow = now.isoweekday()  # 1=Mon, 7=Sun
+    dow = now.isoweekday()
     hour = now.hour
 
-    for g in garages:
-        garage_id = slugify(g["name"])
+    with conn.cursor() as cur:
+        for g in garages:
+            garage_id = slugify(g["name"])
 
-        # Upsert garage metadata
-        conn.execute("""
-            INSERT INTO garages (id, name, capacity, link, building_number)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-                capacity = excluded.capacity,
-                link = excluded.link
-        """, (garage_id, g["name"], g["capacity"], g.get("link"), g.get("osuBuildingNumber")))
+            cur.execute("""
+                INSERT INTO garages (id, name, capacity, link, building_number)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE SET
+                    capacity = excluded.capacity,
+                    link = excluded.link
+            """, (garage_id, g["name"], g["capacity"], g.get("link"), g.get("osuBuildingNumber")))
 
-        # Insert reading
-        conn.execute("""
-            INSERT INTO readings
-                (garage_id, occupied, available, occupancy_pct, closed,
-                 access_types, scraped_at, source_updated_at, day_of_week, hour)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            garage_id,
-            g["count"],
-            g["capacity"] - g["count"],
-            g["percentage"],
-            int(g["closed"]),
-            ",".join(g.get("currentAccess", [])),
-            scraped_at,
-            g.get("lastUpdated"),
-            dow,
-            hour,
-        ))
+            cur.execute("""
+                INSERT INTO readings
+                    (garage_id, occupied, available, occupancy_pct, closed,
+                     access_types, scraped_at, source_updated_at, day_of_week, hour)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                garage_id,
+                g["count"],
+                g["capacity"] - g["count"],
+                g["percentage"],
+                int(g["closed"]),
+                ",".join(g.get("currentAccess", [])),
+                scraped_at,
+                g.get("lastUpdated"),
+                dow,
+                hour,
+            ))
 
     conn.commit()
     print(f"[{scraped_at}] Stored {len(garages)} garages")
 
 
 def main(poll_interval=300):
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    conn = psycopg2.connect(DATABASE_URL)
     init_db(conn)
 
     print(f"Polling every {poll_interval}s. Ctrl+C to stop.")
@@ -99,6 +99,7 @@ def main(poll_interval=300):
             fetch_and_store(conn)
         except Exception as e:
             print(f"Error: {e}")
+            conn.rollback()  # important: a failed query leaves the transaction broken otherwise
         time.sleep(poll_interval)
 
 
