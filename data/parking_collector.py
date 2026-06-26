@@ -4,7 +4,7 @@ import psycopg2
 import time
 from datetime import datetime, timezone
 
-DATABASE_URL = os.environ["DATABASE_URL"]  # Railway injects this automatically
+DATABASE_URL = os.environ["DATABASE_URL"]  
 API_URL = "https://content.osu.edu/v2/parking/garages/availability"
 
 
@@ -99,7 +99,7 @@ def main(poll_interval=300):
             fetch_and_store(conn)
         except Exception as e:
             print(f"Error: {e}")
-            conn.rollback()  # important: a failed query leaves the transaction broken otherwise
+            conn.rollback()  
         time.sleep(poll_interval)
 
 
